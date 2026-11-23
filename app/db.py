@@ -87,6 +87,22 @@ CREATE TABLE IF NOT EXISTS reconcile_reports (
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+CREATE TABLE IF NOT EXISTS code_cleanse_vouchers (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  voucher_code TEXT NOT NULL UNIQUE,
+  row_id INTEGER NOT NULL UNIQUE REFERENCES visit_rows(id),
+  batch_id INTEGER NOT NULL REFERENCES visit_batches(id),
+  subject_key TEXT NOT NULL,
+  visit_code TEXT NOT NULL,
+  old_payload TEXT NOT NULL DEFAULT '',
+  new_payload TEXT NOT NULL,
+  old_fingerprint TEXT NOT NULL,
+  fingerprint TEXT NOT NULL,
+  token TEXT NOT NULL UNIQUE,
+  status TEXT NOT NULL CHECK (status IN ('封档')),
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 CREATE TABLE IF NOT EXISTS audit_events (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   actor TEXT NOT NULL DEFAULT 'admin',

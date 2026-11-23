@@ -1,21 +1,29 @@
 import { api, chip, escapeHtml } from '../api.js';
 
 export async function renderBackfill(el) {
-  const [jobs, gapRows] = await Promise.all([
+  const [jobs, gapRows, cleanses] = await Promise.all([
     api('/api/jobs'),
     api('/api/rows?status=' + encodeURIComponent('待补采')),
+    api('/api/cleanses'),
   ]);
   const summary = jobs.summary || {};
+  const badge = cleanses.summary || {};
 
   el.innerHTML = `
     <div class="card">
       <h2>缺口补采队列</h2>
-      <p class="muted">对待补采/缺口访视行排队补采；执行成功会把载荷补齐、质量改合格并关闭关联质控发现。</p>
+      <p class="muted">对待补采/缺口访视行排队补采；执行成功会把载荷补齐、质量改合格并关闭关联质控发现。编码空行不走补采，须先在字段质控页做编码清洗封档，否则补采执行会被入库闸门拦下。</p>
       <div class="grid">
         <div class="stat"><div class="n">${summary['排队'] || 0}</div><div class="l">排队</div></div>
         <div class="stat"><div class="n">${summary['执行中'] || 0}</div><div class="l">执行中</div></div>
         <div class="stat"><div class="n">${summary['成功'] || 0}</div><div class="l">成功</div></div>
         <div class="stat"><div class="n">${summary['失败'] || 0}</div><div class="l">失败</div></div>
+      </div>
+      <div class="row">
+        <span class="chip bad">空码条数 ${badge.empty_code_total || 0}</span>
+        <span class="chip warn">待清洗空码 ${badge.pending_empty_code || 0}</span>
+        <span class="chip ok">封档清洗凭证 ${badge.sealed_vouchers || 0}</span>
+        <span class="muted">空码摘要只展编码清洗口径：${escapeHtml(badge.rule || '-')}</span>
       </div>
       <div class="row">
         <select id="statusFilter">
@@ -41,7 +49,11 @@ export async function renderBackfill(el) {
               <td>${escapeHtml(r.site_name || '')}</td>
               <td>${escapeHtml(r.subject_key)} / ${escapeHtml(r.visit_code)}</td>
               <td>${chip(r.quality)}</td>
-              <td><button data-enq="${r.id}">加入补采队列</button></td>
+              <td>
+                <button data-enq="${r.id}" ${r.quality === '编码空' ? 'class="warn" title="编码空行补采入库会被闸门拦，须先编码清洗"' : ''}>
+                  ${r.quality === '编码空' ? '加入队列（空码将被拦）' : '加入补采队列'}
+                </button>
+              </td>
             </tr>`).join('') || '<tr><td colspan="6" class="muted">当前没有待补采行</td></tr>'}
         </tbody>
       </table>

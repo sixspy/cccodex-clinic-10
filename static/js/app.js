@@ -20,7 +20,7 @@ async function refreshDash() {
   try {
     const d = await api('/api/dashboard');
     document.getElementById('dashHint').textContent =
-      ` · 中心${d.sites} · 启用${d.sites_enabled} · 批次${d.batches} · 访视行${d.rows} · 缺口${d.gaps} · 开放发现${d.open_findings} · 补采中${d.pending_jobs}`;
+      ` · 中心${d.sites} · 启用${d.sites_enabled} · 批次${d.batches} · 访视行${d.rows} · 缺口${d.gaps} · 编码空${d.empty_code_rows || 0} · 封档清洗${d.sealed_cleanse_vouchers || 0} · 开放发现${d.open_findings} · 补采中${d.pending_jobs}`;
   } catch (e) {
     if (String(e.message).includes('未登录')) location.href = '/login';
   }

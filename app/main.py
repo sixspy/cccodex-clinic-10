@@ -11,6 +11,7 @@ from app.config import Config
 from app.seed import seed_if_needed
 from app.services import audit as audit_svc
 from app.services import backfill as backfill_svc
+from app.services import cleanse as cleanse_svc
 from app.services import protocols as protocols_svc
 from app.services import qc as qc_svc
 from app.services import reconcile as reconcile_svc
@@ -409,6 +410,39 @@ class Api:
 
     @cherrypy.expose
     @_wrap
+    def cleanses(self, cleanse_id=None, action=None):
+        _require()
+        method = cherrypy.request.method
+        q = _query()
+        if cleanse_id is None:
+            if method == "GET":
+                batch_id = int(q["batch_id"]) if q.get("batch_id") else None
+                return _json(
+                    {
+                        "items": cleanse_svc.list_vouchers(batch_id=batch_id),
+                        "pending": cleanse_svc.pending_empty_code_rows(),
+                        "summary": cleanse_svc.badge_summary(),
+                    }
+                )
+            if method == "POST":
+                body = _read_json()
+                return _json(
+                    cleanse_svc.submit_cleanse(
+                        int(body.get("row_id") or 0),
+                        body.get("visit_code", ""),
+                        body.get("payload", ""),
+                    )
+                )
+            return _json({"error": "方法不允许"}, 405)
+        cid = int(cleanse_id)
+        if action == "verify" and method == "POST":
+            return _json(cleanse_svc.verify_voucher(cid))
+        if action is None and method == "GET":
+            return _json(cleanse_svc.get_voucher(cid))
+        return _json({"error": "未知编码清洗路由"}, 404)
+
+    @cherrypy.expose
+    @_wrap
     def reports(self, action=None):
         _require()
         method = cherrypy.request.method
@@ -509,6 +543,13 @@ class ApiMount:
             if len(parts) == 2:
                 return api.jobs(job_id=parts[1])
             return api.jobs(job_id=parts[1], action=parts[2])
+        if path == "/cleanses" or path.startswith("/cleanses/"):
+            parts = path.strip("/").split("/")
+            if len(parts) == 1:
+                return api.cleanses()
+            if len(parts) == 2:
+                return api.cleanses(cleanse_id=parts[1])
+            return api.cleanses(cleanse_id=parts[1], action=parts[2])
         if path == "/reports" or path.startswith("/reports/"):
             parts = path.strip("/").split("/")
             if len(parts) == 1:

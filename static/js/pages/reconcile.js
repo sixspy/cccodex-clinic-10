@@ -14,9 +14,10 @@ export async function renderReconcile(el) {
       <p class="muted">对照缺口行、开放质控发现与补采队列，找出无发现缺口、陈旧发现、未覆盖补采等不一致。</p>
       <div class="grid">
         <div class="stat"><div class="n">${dash.gaps}</div><div class="l">当前缺口行</div></div>
+        <div class="stat"><div class="n">${dash.empty_code_rows || 0}</div><div class="l">编码空行（编码列空洞）</div></div>
         <div class="stat"><div class="n">${dash.open_findings}</div><div class="l">开放发现</div></div>
         <div class="stat"><div class="n">${dash.pending_jobs}</div><div class="l">待执行补采</div></div>
-        <div class="stat"><div class="n">${dash.batches}</div><div class="l">批次数</div></div>
+        <div class="stat"><div class="n">${dash.sealed_cleanse_vouchers || 0}</div><div class="l">封档清洗凭证</div></div>
       </div>
       <div class="row">
         <button id="run">生成对账报告</button>
@@ -28,7 +29,7 @@ export async function renderReconcile(el) {
       <h2>中心缺口矩阵</h2>
       <table>
         <thead>
-          <tr><th>中心</th><th>状态</th><th>批次</th><th>访视行</th><th>缺口</th><th>开放发现</th></tr>
+          <tr><th>中心</th><th>状态</th><th>批次</th><th>访视行</th><th>缺口</th><th>编码空</th><th>封档清洗</th><th>开放发现</th></tr>
         </thead>
         <tbody>
           ${(matrix.items || []).map((s) => `
@@ -38,6 +39,8 @@ export async function renderReconcile(el) {
               <td>${s.batch_count}</td>
               <td>${s.row_count}</td>
               <td>${s.gap_count || 0}</td>
+              <td><span class="chip ${(s.empty_code_count || 0) > (s.sealed_cleanse_count || 0) ? 'bad' : 'ok'}">${s.empty_code_count || 0}</span></td>
+              <td>${s.sealed_cleanse_count || 0}</td>
               <td>${s.open_findings || 0}</td>
             </tr>`).join('')}
         </tbody>

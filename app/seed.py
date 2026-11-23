@@ -20,6 +20,7 @@ def seed_if_needed(db_path: str | None = None) -> None:
             ("default_visit_codes", "V1,V2,V3,EOT", "默认访视编码清单"),
             ("crawl_page_size", "20", "模拟抓取每批条数"),
             ("clinic_timezone", "Asia/Shanghai", "台账时区"),
+            ("code_cleanse_rule", "编码清洗须落封档凭证并核验指纹，空码无凭证禁止入库", "编码清洗口径"),
         ]
         conn.executemany(
             "INSERT OR IGNORE INTO app_settings(key, value, label) VALUES (?,?,?)",

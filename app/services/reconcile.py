@@ -20,6 +20,12 @@ def dashboard(db_path: str | None = None) -> dict:
             WHERE quality!='合格' AND status IN ('待检','待补采')
             """
         ).fetchone()["c"]
+        empty_code = conn.execute(
+            "SELECT COUNT(*) AS c FROM visit_rows WHERE quality='编码空'"
+        ).fetchone()["c"]
+        sealed = conn.execute(
+            "SELECT COUNT(*) AS c FROM code_cleanse_vouchers WHERE status='封档'"
+        ).fetchone()["c"]
         findings = conn.execute(
             "SELECT COUNT(*) AS c FROM qc_findings WHERE status='开放'"
         ).fetchone()["c"]
@@ -42,6 +48,8 @@ def dashboard(db_path: str | None = None) -> dict:
             "batches": batches,
             "rows": rows,
             "gaps": gaps,
+            "empty_code_rows": empty_code,
+            "sealed_cleanse_vouchers": sealed,
             "open_findings": findings,
             "pending_jobs": jobs,
             "audits": audits,
@@ -55,6 +63,23 @@ def run_reconcile(db_path: str | None = None) -> dict:
             """
             SELECT COUNT(*) AS c FROM visit_rows
             WHERE quality!='合格' AND status IN ('待检','待补采')
+            """
+        ).fetchone()["c"]
+        empty_code_rows = conn.execute(
+            "SELECT COUNT(*) AS c FROM visit_rows WHERE quality='编码空'"
+        ).fetchone()["c"]
+        sealed_vouchers = conn.execute(
+            "SELECT COUNT(*) AS c FROM code_cleanse_vouchers WHERE status='封档'"
+        ).fetchone()["c"]
+        # 编码空行没有封档凭证即对账矩阵里的编码列空洞
+        uncovered_empty = conn.execute(
+            """
+            SELECT COUNT(*) AS c FROM visit_rows r
+            WHERE r.quality='编码空'
+              AND NOT EXISTS (
+                SELECT 1 FROM code_cleanse_vouchers v
+                WHERE v.row_id=r.id AND v.status='封档'
+              )
             """
         ).fetchone()["c"]
         open_findings = conn.execute(
@@ -96,10 +121,11 @@ def run_reconcile(db_path: str | None = None) -> dict:
               )
             """
         ).fetchone()["c"]
-        mismatch = orphan_gaps + stale_findings + uncovered
+        mismatch = orphan_gaps + stale_findings + uncovered + uncovered_empty
         summary = (
             f"缺口行{gap_rows} · 开放发现{open_findings} · 待执行补采{pending_jobs} · "
-            f"无发现缺口{orphan_gaps} · 陈旧发现{stale_findings} · 未覆盖补采{uncovered}"
+            f"无发现缺口{orphan_gaps} · 陈旧发现{stale_findings} · 未覆盖补采{uncovered} · "
+            f"空码无清洗凭证{uncovered_empty} · 封档凭证{sealed_vouchers}"
         )
         cur = conn.execute(
             """
@@ -117,6 +143,9 @@ def run_reconcile(db_path: str | None = None) -> dict:
             "orphan_gaps": orphan_gaps,
             "stale_findings": stale_findings,
             "uncovered_backfill": uncovered,
+            "empty_code_rows": empty_code_rows,
+            "sealed_cleanse_vouchers": sealed_vouchers,
+            "uncovered_empty_code": uncovered_empty,
             "gap_by_quality": [
                 dict(r)
                 for r in conn.execute(
@@ -177,10 +206,13 @@ def site_gap_matrix(db_path: str | None = None) -> list[dict]:
               COUNT(DISTINCT b.id) AS batch_count,
               COUNT(r.id) AS row_count,
               SUM(CASE WHEN r.quality!='合格' AND r.status IN ('待检','待补采') THEN 1 ELSE 0 END) AS gap_count,
+              SUM(CASE WHEN r.quality='编码空' THEN 1 ELSE 0 END) AS empty_code_count,
+              SUM(CASE WHEN v.id IS NOT NULL THEN 1 ELSE 0 END) AS sealed_cleanse_count,
               SUM(CASE WHEN f.status='开放' THEN 1 ELSE 0 END) AS open_findings
             FROM trial_sites s
             LEFT JOIN visit_batches b ON b.site_id=s.id
             LEFT JOIN visit_rows r ON r.batch_id=b.id
+            LEFT JOIN code_cleanse_vouchers v ON v.row_id=r.id
             LEFT JOIN qc_findings f ON f.row_id=r.id
             GROUP BY s.id
             ORDER BY s.id

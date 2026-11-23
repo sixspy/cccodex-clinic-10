@@ -6,6 +6,7 @@ from datetime import datetime
 
 from app.db import get_db
 from app.services import audit as audit_svc
+from app.services import cleanse as cleanse_svc
 from app.services import protocols as protocols_svc
 from app.services.errors import ServiceError
 
@@ -445,6 +446,9 @@ def set_row_status(row_id: int, status: str, db_path: str | None = None) -> dict
         ).fetchone()
         if batch and batch["status"] == "已关闭" and status != "已关闭":
             raise ServiceError("已关闭批次内行不能改状态")
+        if status == "已入库":
+            # 入库闸门：编码空行无封档凭证/指纹不符一律拦住
+            cleanse_svc.assert_row_can_enter_warehouse(conn, row)
         conn.execute(
             "UPDATE visit_rows SET status=? WHERE id=?", (status, row_id)
         )
@@ -466,6 +470,23 @@ def ingest_ok_rows(batch_id: int, db_path: str | None = None) -> dict:
             raise ServiceError("访视批次不存在", 404)
         if batch["status"] == "已关闭":
             raise ServiceError("已关闭批次不能入库")
+        # 入库闸门：编码空行即便混到合格队列也必须过凭证+指纹核验
+        blocked = conn.execute(
+            """
+            SELECT r.id FROM visit_rows r
+            WHERE r.batch_id=? AND r.quality='编码空' AND r.status='待检'
+            ORDER BY r.id
+            """
+        , (batch_id,)).fetchall()
+        blocked_ids = []
+        for item in blocked:
+            row = conn.execute(
+                "SELECT * FROM visit_rows WHERE id=?", (item["id"],)
+            ).fetchone()
+            try:
+                cleanse_svc.assert_row_can_enter_warehouse(conn, row)
+            except ServiceError:
+                blocked_ids.append(item["id"])
         cur = conn.execute(
             """
             UPDATE visit_rows
@@ -476,6 +497,15 @@ def ingest_ok_rows(batch_id: int, db_path: str | None = None) -> dict:
         )
         n = cur.rowcount
     audit_svc.write_event(
-        "合格行入库", "visit_batch", batch_id, f"入库{n}行", db_path=db_path
+        "合格行入库",
+        "visit_batch",
+        batch_id,
+        f"入库{n}行，编码空凭证缺失拦截{len(blocked_ids)}行",
+        db_path=db_path,
     )
-    return {"ingested": n, "batch": get_batch(batch_id, db_path)}
+    return {
+        "ingested": n,
+        "blocked_empty_code": len(blocked_ids),
+        "blocked_row_ids": blocked_ids,
+        "batch": get_batch(batch_id, db_path),
+    }

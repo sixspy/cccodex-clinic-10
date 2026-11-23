@@ -88,7 +88,8 @@ export async function renderVisits(el) {
         <div class="stat"><div class="n">${b.item_count}</div><div class="l">访视行</div></div>
         <div class="stat"><div class="n">${b.gap_count}</div><div class="l">缺口行</div></div>
         <div class="stat"><div class="n">${qs['合格'] || 0}</div><div class="l">合格</div></div>
-        <div class="stat"><div class="n">${(qs['缺字段'] || 0) + (qs['编码空'] || 0) + (qs['重复键'] || 0)}</div><div class="l">异常质量</div></div>
+        <div class="stat"><div class="n">${qs['编码空'] || 0}</div><div class="l">编码空（须先清洗）</div></div>
+        <div class="stat"><div class="n">${(qs['缺字段'] || 0) + (qs['重复键'] || 0)}</div><div class="l">其他异常质量</div></div>
       </div>
       <div class="row">
         <input id="subjectKey" placeholder="受试者键" />
@@ -119,6 +120,7 @@ export async function renderVisits(el) {
               <td class="row">
                 <button data-enqueue-row="${r.id}" ${r.quality === '合格' && r.status === '已入库' ? 'disabled' : ''}>排队补采</button>
                 <button data-mark="${r.id}" data-st="待补采" class="ghost">标待补采</button>
+                ${r.quality === '编码空' ? '<span class="chip bad">空码入库须先到字段质控页清洗封档</span>' : ''}
               </td>
             </tr>`).join('') || '<tr><td colspan="7" class="muted">暂无访视行</td></tr>'}
         </tbody>

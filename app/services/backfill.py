@@ -137,6 +137,7 @@ def enqueue_gaps_for_batch(batch_id: int, db_path: str | None = None) -> dict:
 
 def run_job(job_id: int, succeed: bool = True, db_path: str | None = None) -> dict:
     max_attempt = settings_svc.get_int("backfill_max_attempt", 3, db_path=db_path)
+    audit_outcome = "失败"
     with get_db(db_path) as conn:
         job = conn.execute(
             "SELECT * FROM backfill_jobs WHERE id=?", (job_id,)
@@ -180,7 +181,21 @@ def run_job(job_id: int, succeed: bool = True, db_path: str | None = None) -> di
                 (job_id,),
             )
             return get_job(job_id, db_path)
-        if succeed:
+        if succeed and row["quality"] == "编码空":
+            # 入库闸门：编码空不能靠补采蒙混入库，须先编码清洗封档。
+            # 失败状态与消息同事务落库，不抛异常以免回滚掉失败记录。
+            conn.execute(
+                """
+                UPDATE backfill_jobs
+                SET status='失败',
+                    message='编码空行未取得封档清洗凭证，禁止补采入库；请先到字段质控页做编码清洗',
+                    finished_at=datetime('now'), attempt=attempt+1
+                WHERE id=?
+                """,
+                (job_id,),
+            )
+            audit_outcome = "编码空入库拦截"
+        elif succeed:
             payload = row["payload"]
             try:
                 data = json.loads(payload) if payload else {}
@@ -232,6 +247,7 @@ def run_job(job_id: int, succeed: bool = True, db_path: str | None = None) -> di
                 "UPDATE visit_batches SET gap_count=?, item_count=? WHERE id=?",
                 (gap, item_count, row["batch_id"]),
             )
+            audit_outcome = "成功"
         else:
             conn.execute(
                 """
@@ -246,7 +262,7 @@ def run_job(job_id: int, succeed: bool = True, db_path: str | None = None) -> di
         "执行补采",
         "backfill_job",
         job_id,
-        "成功" if succeed else "失败",
+        audit_outcome,
         db_path=db_path,
     )
     return get_job(job_id, db_path)

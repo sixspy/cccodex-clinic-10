@@ -133,7 +133,11 @@ def scan_batch(batch_id: int, db_path: str | None = None) -> dict:
         rows = conn.execute(
             """
             SELECT * FROM visit_rows
-            WHERE batch_id=? AND quality!='合格' AND status IN ('待检','待补采')
+            WHERE batch_id=? AND quality!='合格'
+              AND (
+                status IN ('待检','待补采')
+                OR (quality='编码空' AND status='已入库')
+              )
             ORDER BY id
             """,
             (batch_id,),
